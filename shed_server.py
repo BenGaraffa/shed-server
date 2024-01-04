@@ -13,17 +13,23 @@ lobbies: Dict[str, Lobby] = {}
 @app.post("/create_lobby")
 def create_lobby(lobby: Lobby):
     if lobby.name in lobbies:
-        raise HTTPException(status_code=400, detail="Lobby already exists")
+        raise HTTPException(status_code=400, detail=f"Lobby '{lobby.name}' already exists")
     lobbies[lobby.name] = lobby
     return {"message": f"Lobby '{lobby.name}' created"}
 
+@app.delete("/delete_lobby")
+def delete_lobby(lobby_name: str):
+    if lobby_name not in lobbies:
+        raise HTTPException(status_code=404, detail=f"Lobby '{lobby_name}' doesn't exist")
+    del lobbies[lobby_name]
+    return {"message": f"Lobby '{lobby_name}' deleted"}
+
 @app.post("/join_lobby/{lobby_name}")
 def join_lobby(lobby_name: str, player_name: str):
-    
     if lobby_name not in lobbies:
-        raise HTTPException(status_code=404, detail="Lobby not found")
+        raise HTTPException(status_code=404, detail=f"Lobby '{lobby_name}' not found")
     if player_name in lobbies[lobby_name].players:
-        raise HTTPException(status_code=400, detail="Player already in the lobby")
+        raise HTTPException(status_code=400, detail=f"Player '{player_name}' is already in the lobby '{lobby_name}'")
     return {"message": f"Player '{player_name}' can join lobby '{lobby_name}'"}
 
 @app.get("/lobbies")
