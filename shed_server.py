@@ -1,12 +1,16 @@
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request
 from typing import List, Dict
 from pydantic import BaseModel
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
 
 app = FastAPI()
 
 class Lobby(BaseModel):
     name: str
-    players: List[str] = []
+    players: Dict[str, WebSocket] = {}
 
 lobbies: Dict[str, Lobby] = {}
 
@@ -24,26 +28,27 @@ def delete_lobby(lobby_name: str):
     del lobbies[lobby_name]
     return {"message": f"Lobby '{lobby_name}' deleted"}
 
-@app.post("/join_lobby/{lobby_name}")
-def join_lobby(lobby_name: str, player_name: str):
-    if lobby_name not in lobbies:
-        raise HTTPException(status_code=404, detail=f"Lobby '{lobby_name}' not found")
-    if player_name in lobbies[lobby_name].players:
-        raise HTTPException(status_code=400, detail=f"Player '{player_name}' is already in the lobby '{lobby_name}'")
-    return {"message": f"Player '{player_name}' can join lobby '{lobby_name}'"}
+# @app.get("/can_join_lobby/{lobby_name}")
+# def can_join_lobby(lobby_name: str, player_name: str):
+#     if lobby_name not in lobbies:
+#         raise HTTPException(status_code=404, detail=f"Lobby '{lobby_name}' not found")
+#     if player_name in lobbies[lobby_name].players:
+#         raise HTTPException(status_code=400, detail=f"Player '{player_name}' is already in the lobby '{lobby_name}'")
+#     return {"message": f"Player '{player_name}' can join lobby '{lobby_name}'"}
 
 @app.get("/lobbies")
 def list_lobbies():
     return lobbies
 
 # WebSocket connection for real-time communication
-@app.websocket("/ws/{lobby_name}/{player_name}")
-async def websocket_endpoint(websocket: WebSocket, lobby_name: str, player_name: str):
+@app.websocket("/join_lobby/{lobby_name}/{player_name}")
+async def join_lobby(websocket: WebSocket, lobby_name: str, player_name: str):
+    if lobby_name not in lobbies:
+        raise HTTPException(status_code=404, detail=f"Lobby '{lobby_name}' not found")
+    if player_name in lobbies[lobby_name].players:
+        raise HTTPException(status_code=400, detail=f"Player '{player_name}' is already in the lobby '{lobby_name}'")
     await websocket.accept()
     try:
-        if lobby_name not in lobbies:
-            await websocket.close(code=1001)
-            return
         lobbies[lobby_name].players.append(player_name)
         while True:
             data = await websocket.receive_text()
