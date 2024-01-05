@@ -44,18 +44,22 @@ def list_lobbies():
 @app.websocket("/join_lobby/{lobby_name}/{player_name}")
 async def join_lobby(websocket: WebSocket, lobby_name: str, player_name: str):
     if lobby_name not in lobbies:
+        await websocket.close()
         raise HTTPException(status_code=404, detail=f"Lobby '{lobby_name}' not found")
     if player_name in lobbies[lobby_name].players:
+        await websocket.close()
         raise HTTPException(status_code=400, detail=f"Player '{player_name}' is already in the lobby '{lobby_name}'")
     await websocket.accept()
     try:
-        lobbies[lobby_name].players.append(player_name)
+        lobbies[lobby_name].players[player_name] = websocket
         while True:
+            logging.info("yo!")
             data = await websocket.receive_text()
+            logging.info(data)
             # Handle incoming data
             # ...
     except WebSocketDisconnect:
-        lobbies[lobby_name].players.remove(player_name) # Remove disconnected player
+        del lobbies[lobby_name].players[player_name] # Remove disconnected player
         # Reconnect attempt needed first?
         if not lobbies[lobby_name].players:
             del lobbies[lobby_name]  # Delete lobby if empty
