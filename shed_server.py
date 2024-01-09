@@ -28,17 +28,10 @@ def delete_lobby(lobby_name: str):
     del lobbies[lobby_name]
     return {"message": f"Lobby '{lobby_name}' deleted"}
 
-# @app.get("/can_join_lobby/{lobby_name}")
-# def can_join_lobby(lobby_name: str, player_name: str):
-#     if lobby_name not in lobbies:
-#         raise HTTPException(status_code=404, detail=f"Lobby '{lobby_name}' not found")
-#     if player_name in lobbies[lobby_name].players:
-#         raise HTTPException(status_code=400, detail=f"Player '{player_name}' is already in the lobby '{lobby_name}'")
-#     return {"message": f"Player '{player_name}' can join lobby '{lobby_name}'"}
-
 @app.get("/lobbies")
 def list_lobbies():
-    return {name: {"playerCount": len(lobby.players)} for name, lobby in lobbies.items()}
+    # return {name: {"playerCount": len(lobby.players)} for name, lobby in lobbies.items()}
+    return {'lobbies': [{'lobby_name': name, 'player_count': len(lobby.players)} for name, lobby in lobbies.items()]}
 
 # WebSocket connection for real-time communication
 @app.websocket("/join_lobby/{lobby_name}/{player_name}")
