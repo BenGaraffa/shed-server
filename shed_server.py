@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request
 from typing import List, Dict
 import logging
+import json
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -11,7 +12,15 @@ class Lobby:
     def __init__(self, name: str):
         self.name = name
         self.players: Dict[str, WebSocket] = {}
-        self.ready = Dict[str, bool] = {}
+        self.ready:   Dict[str, bool] = {}
+
+class ActionTypes:
+    READY = 'ready'
+
+class StateTypes:
+    READY_STATE = 'ready_state'
+    ALL_READY   = 'all_ready'
+
 
 lobbies: Dict[str, Lobby] = {}
 
@@ -61,6 +70,17 @@ async def join_lobby(websocket: WebSocket, lobby_name: str, player_name: str):
     except WebSocketDisconnect:
         del lobbies[lobby_name].players[player_name] # Remove disconnected player
         del lobbies[lobby_name].ready[player_name]
+
+        # Make sure unready all players if someone disconnects
+        if all(lobbies[lobby_name].ready.values()):
+            message = {
+                "type": StateTypes.ALL_READY,
+                "all_ready": False
+            }
+            await broadcast_message(lobby_name, message)
+            for player_key in lobbies[lobby_name].ready.keys():
+                lobbies[lobby_name].ready[player_key] = False
+            
         # Reconnect attempt needed first?
         if not lobbies[lobby_name].players:
             del lobbies[lobby_name]  # Delete lobby if empty
@@ -76,24 +96,24 @@ def parse_action(message: str):
         raise ValueError("Invalid JSON message")
 
 async def handle_action(action, websocket, lobby_name, player_name):
-    if action['type'] == "ready_up":
+    if action['type'] == ActionTypes.READY:
         lobbies[lobby_name].ready[player_name] = True
         message = {
-            "type": "ready_status",
+            "type": StateTypes.READY_STATE,
             "player": player_name,
-            "is_ready": True
+            "is_ready": action['is_ready']
         }
-        await broadcast_message(lobby_name, player_name, message)
-    elif action['type'] == "ready_down":
-        lobbies[lobby_name].ready[player_name] = True
-        message = {
-            "type": "ready_status",
-            "player": player_name,
-            "is_ready": False
-        }
-        await broadcast_message(lobby_name, player_name, message)
+        logging.info(lobbies[lobby_name].ready)
+        await broadcast_message(lobby_name, message, player_name)
 
-async def broadcast_message(lobby_name: str, player_name: str, message: dict):
+        if all(lobbies[lobby_name].ready.values()):
+            message = {
+                "type": StateTypes.ALL_READY,
+                "all_ready": True
+            }
+            await broadcast_message(lobby_name, message)
+
+async def broadcast_message(lobby_name: str, message: dict, player_name: str = None):
     if lobby_name in lobbies:
         json_string = json.dumps(message)
         for player, websocket in lobbies[lobby_name].players.items():
