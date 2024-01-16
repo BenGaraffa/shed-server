@@ -17,7 +17,7 @@ class PlayerState:
         self.cards_face_down = []    # Player's face-down cards
 
     def is_winner(self):
-        # Check if the player has won (no cards left
+        # Check if the player has won (no cards left)
         return not (self.cards_hand or self.cards_face_up or self.cards_face_down)
     
     def __repr__(self):
@@ -121,14 +121,17 @@ class GameState:
     
     def get_player_last_action(self):
         last_action = self.game_history[self.game_start_time][self.round_index][self.turn_index][-1]
-        return None if not last_action else last_action 
-            
-    def complete_turn(self, actions=[]):
-        # Round start/store logic
+        return None if not last_action else last_action
+
+    def check_round_start(self):
         if self.turn_index == self.start_index:
             self.store_game_state()
             self.create_round()
             self.round_index += 1
+            
+    def complete_turn(self, actions=[]):
+        # Round start/store logic
+        self.check_round_start()
 
         player_state = self.player_states[self.turn_index]
         # Parse actions
@@ -146,9 +149,16 @@ class GameState:
                     if  result == '*' and self.get_player_last_action() != '*':
                         self.extend_player_actions('*')
 
+        if player_state.is_winner():
+            if self.is_game_over():
+                pass
+
         # Load next player's turns
         if not actions or self.get_player_last_action() != '*':
             self.next_turn()
+
+    def is_game_over(self):
+        return len([None for player_state in self.player_states if not player_state.is_winner()]) == 1
 
     def get_last_player_actions(self):
         round_ = self.game_history[self.game_start_time][self.round_index]
@@ -200,7 +210,6 @@ class GameState:
 
     def choose_first_player(self):
         lowest_cards = [self.get_lowest_card(player_state) for player_state in self.player_states]
-        print(f"lowest_cards: {lowest_cards}")
         return self.turn_index if not lowest_cards else lowest_cards.index(min(lowest_cards))
     
     def get_lowest_card(self, player_state: PlayerState):
@@ -218,7 +227,7 @@ class GameState:
     def can_play_card(self, card: str):
         # Determines if a card can be played based on its rank and game rules
         card_rank = get_card_rank(card)
-        if self.round_index == 0 and self.start_index == self.turn_index:
+        if self.round_index == 1 and self.start_index == self.turn_index:
             return card_rank == self.get_lowest_card(self.player_states[self.turn_index])
 
         top_card_rank = get_card_rank(self.table_cards.top_card())
@@ -286,8 +295,12 @@ class GameState:
         return '*'
     
     def next_turn(self):
-        # Move to the next player's turn
+        # Move to the next player's turn            
         self.turn_index = (self.turn_index + 1) % len(self.player_states)
+        if self.player_states[self.turn_index].is_winner():
+            if self.turn_index == self.start_index:
+                self.check_round_start()
+            self.next_turn()
 
     def deal_cards(self):
         # Deal initial cards to all players
