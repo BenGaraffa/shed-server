@@ -71,9 +71,8 @@ class GameState:
         self.is_game_over = False
         self.game_history = {'magic_cards': magic_cards}
     
-    def store_game_state(self):
-        self.game_history[self.game_start_time].append({0: [], 1: [], 'player_states': {}, 'table_cards': {}})
-        # for player in player_states:
+    # def store_game_state(self):
+    #     self.game_history[self.game_start_time].append({0: [], 1: [], 'player_states': {}, 'table_cards': {}})
             
     def start_game(self):
         if self.is_game_over == True: 
@@ -129,12 +128,11 @@ class GameState:
                         self.extend_player_actions('*')
 
         # What happened...
-        player_state.name
         # send actions???
 
-        # Load next player's turn
-    
-        self.next_turn()
+        # Load next player's turns
+        if self.get_last_player_action() != '*':
+            self.next_turn()
 
         # Turn histoy append
     
@@ -181,7 +179,7 @@ class GameState:
         return lowest_cards.index(min(lowest_cards))
     
     def get_lowest_card(self, player_state: PlayerState):
-        return min([card_rank for card in player_state.cards_hand if (card_rank := get_card_rank(card)) not in self.magic_cards.keys()])
+        return min([card_rank for card in player_state.cards_hand if (card_rank := get_card_rank(card)) not in self.magic_cards])
 
     def get_playable_cards(self, player_index: int):
         player_state = self.player_states[player_index]
@@ -228,12 +226,15 @@ class GameState:
         player_state = self.player_states[self.turn_index]
         if card in player_state.cards_hand:
             player_state.cards_hand.remove(card)
+            # Replace the played card from the player's hand with a new one from the deck
+            if self.table_cards.deck:
+                player_state.cards_hand.append(self.table_cards.deck.pop())
         elif card in player_state.cards_face_up:
             player_state.cards_face_up.remove(card)
         elif card in player_state.cards_face_down:
             player_state.cards_face_down.remove(card)
         else:
-            raise ValueError(f"Can't play '{card}' as '{player_state}'")        
+            raise ValueError(f"Player {self.turn_index} ({player_state.name}) doesn't have '{card}'")        
 
         self.table_cards.stack_play.append(card)
 
@@ -259,11 +260,6 @@ class GameState:
         self.table_cards.stack_play.clear()
         return '*'
     
-    def replace_card(self, card: str, player_index: int):
-        # Replace a played card from the player's hand with a new one from the deck
-        if self.table_cards.deck:
-            self.player_states[player_index].cards_hand.append(self.table_cards.deck.pop())
-        
     def next_turn(self):
         # Move to the next player's turn
         self.turn_index = (self.turn_index + 1) % len(self.player_states)
@@ -287,7 +283,8 @@ magic_cards = {
 
 
 if __name__ == '__main__':
-    game = GameState({'Ben1': [], 'Ben2': []}, magic_cards)
+    players = {'Ben1': [], 'Ben2': []}
+    game = GameState(players, magic_cards)
     game.start_game()
     for i, player_state in enumerate(game.player_states):
         print(i, player_state)
@@ -298,3 +295,9 @@ if __name__ == '__main__':
     print(game.table_cards.deck)
     print(game.table_cards.stack_play)
     print(game.table_cards.stack_discard)
+    print(game.player_states[game.turn_index].cards_hand)
+    print('RESET')
+    players = {'Ben1': [], 'Ben3': []}
+    game.reset(players)
+    for i, player_state in enumerate(game.player_states):
+        print(i, player_state)
