@@ -44,14 +44,6 @@ class TableCards:
         random.shuffle(self.deck)
         self.stack_discard = []  # Discarded cards stack
         self.stack_play = []     # Cards currently in play
-
-    # def top_card(self):
-    #     # Return the top card of the play stack
-    #     return self.stack_play[-1] if self.stack_play else None
-    
-    # def second_card(self):
-    #     # Return the second card from the top of the play stack
-    #     return self.stack_play[-2] if len(self.stack_play) > 1 else None
     
     def get_json(self):
         # Return json of the table's current state
@@ -97,16 +89,24 @@ class GameState:
         # if self.is_game_over(): 
         #     self.reset()
         self.deal_cards()
-        self.start_index = self.choose_first_player()
-        self.turn_index = self.start_index
+        # self.start_index = self.choose_first_player()
+        # self.turn_index = self.start_index
         self.game_start_time = datetime.now().strftime("%Y-%m-%d | %H:%M:%S")
         self.game_history[self.game_start_time] = []
+        self.create_round()
+        self.store_game_state()
+        self.round_index += 1
         self.create_round()
 
     def create_round(self):
         self.game_history[self.game_start_time].append({player_index: [] for player_index in range(len(self.player_states))})
 
     def init_turn(self):
+        # Choose the first player and set the start index
+        if self.turn_index == self.start_index and self.round_index == 1:
+            self.start_index = self.choose_first_player()
+            self.turn_index = self.start_index
+
         # send playable cards
         playable_cards = self.get_playable_cards(self.turn_index)
         if playable_cards:
@@ -121,7 +121,7 @@ class GameState:
 
     def card_swap(self, player_name, cards=[]):
         player_state = self.player_states[self.get_player_index(player_name)]
-
+        print(f"get player index: {self.get_player_index(player_name)} player name: {player_name}")
         if not cards[0] in player_state.cards_hand:
             raise ValueError(f"{cards[0]} not in {player_name}'s hand")
         if not cards[1] in player_state.cards_face_up:
@@ -129,6 +129,8 @@ class GameState:
 
         hand_index = player_state.cards_hand.index(cards[0])
         face_up_index = player_state.cards_face_up.index(cards[1])
+        print(f"Hand card: {cards[0]}")
+        print(f"Face up card: {cards[1]}")
         player_state.cards_hand[hand_index] = cards[1]
         player_state.cards_face_up[face_up_index] = cards[0]
 
@@ -248,6 +250,14 @@ class GameState:
 
         effective_top_card = self.find_effective_top_card()
         effective_top_card_rank = get_card_rank(effective_top_card) if effective_top_card else None
+        
+        # Filter cards for lowest if on first round
+        if self.round_index == 1 and self.start_index == self.turn_index:
+            return card_rank == self.get_lowest_card(self.player_states[self.turn_index])
+
+        # Allow card if nothing on deck
+        if not effective_top_card_rank:
+            return True
 
         # Magic card rules (if the played card is a magic card)
         if card_rank in self.magic_cards:
@@ -344,28 +354,20 @@ magic_cards = {
 
 
 if __name__ == '__main__':
-    players = {'Ben1': [], 'Ben2': [], 'Ben3': [], 'Ben4': []}
+    players = {'Ben1': [], 'Ben2': []}
     game = GameState(players, magic_cards)
     game.start_game()
 
-    # game.card_swap(game.player_states[game.turn_index].name, [game.player_states[game.turn_index].cards_hand[0], game.player_states[game.turn_index].cards_face_up[0]])
-    # print("swap!")
-    # print(f"{game.player_states[game.turn_index].name}, hand: {game.player_states[game.turn_index].cards_hand}, face_up: {game.player_states[game.turn_index].cards_face_up}")
-    # for _ in game.player_states:
-    #     playable_cards = game.init_turn()
-    #     print(f"playable cards: {playable_cards}")
-    #     game.complete_turn([playable_cards[0]])
+    game.card_swap(game.player_states[game.turn_index].name, [game.player_states[game.turn_index].cards_hand[0], game.player_states[game.turn_index].cards_face_up[0]])
+    print("swap!")
+
     while not game.is_game_over():
         playable_cards = game.init_turn()
         game.complete_turn([playable_cards[0]])
-    # print(f"play stack: {game.table_cards.stack_play}")
-    # Specify the filename for the output
-    output_filename = f"game_history_output.txt"
 
+    output_filename = f"game_history_output.txt"
     with open(output_filename, "w+") as file:
         for i, round_ in enumerate(game.game_history[game.game_start_time]):
             file.write(f"Round {i}:\n{round_}\n\n")
 
     print(f"Game history written to {output_filename}")
-    # index = len(game.player_states) - 1 if game.turn_index - 1 == -1 else game.turn_index - 1
-    # print(f"{index}'s hand: {game.player_states[index].cards_hand}")
