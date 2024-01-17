@@ -24,7 +24,7 @@ class PlayerState:
         string = f"Name: {self.name}\n"
         string += f"Hand: {self.cards_hand}\n"
         string += f"Face Up: {self.cards_face_up}\n"
-        return string + f"Face Down: {self.cards_face_down}"
+        return string + f"Face Down: {self.cards_face_down}\n"
         
 
 class TableCards:
@@ -69,17 +69,17 @@ class GameState:
         self.start_index = 0
         self.turn_index = 0
         self.round_index = 0
-        self.is_game_over = False
         self.game_start_time = ''
         self.game_history = {'magic_cards': magic_cards}
     
     def store_game_state(self):
+        print(f"Storing round {self.round_index}: {self.player_states}")
         self.game_history[self.game_start_time][self.round_index]['player_states'] = self.player_states # Change to json objectable format later
         self.game_history[self.game_start_time][self.round_index]['table_cards'] = self.table_cards
             
     def start_game(self):
-        if self.is_game_over == True: 
-            self.reset()
+        # if self.is_game_over(): 
+        #     self.reset()
         self.deal_cards()
         self.start_index = self.choose_first_player()
         self.turn_index = self.start_index
@@ -116,8 +116,8 @@ class GameState:
         player_state.cards_hand[hand_index] = cards[1]
         player_state.cards_face_up[face_up_index] = cards[0]
 
-    def extend_player_actions(self, action):
-        self.game_history[self.game_start_time][self.round_index][self.turn_index].extend(action)
+    def append_player_actions(self, action):
+        self.game_history[self.game_start_time][self.round_index][self.turn_index].append(action)
     
     def get_player_last_action(self):
         last_action = self.game_history[self.game_start_time][self.round_index][self.turn_index][-1]
@@ -125,6 +125,8 @@ class GameState:
 
     def check_round_start(self):
         if self.turn_index == self.start_index:
+            print(f'ROUND {self.round_index} START')
+            print(len(self.game_history[self.game_start_time]))
             self.store_game_state()
             self.create_round()
             self.round_index += 1
@@ -141,24 +143,25 @@ class GameState:
                     # Pickup
                     player_state.cards_hand.extend(self.table_cards.stack_play)
                     self.table_cards.stack_play.clear()
-                    self.extend_player_actions(action)
+                    self.append_player_actions(action)
                 case _:
                     # Play card
                     result = self.play_card(action)
-                    self.extend_player_actions(action)
+                    self.append_player_actions(action)
                     if  result == '*' and self.get_player_last_action() != '*':
-                        self.extend_player_actions('*')
-
+                        self.append_player_actions('*')
+                        
         if player_state.is_winner():
             if self.is_game_over():
-                pass
+                self.store_game_state()
+                return
 
         # Load next player's turns
         if not actions or self.get_player_last_action() != '*':
             self.next_turn()
 
     def is_game_over(self):
-        return len([None for player_state in self.player_states if not player_state.is_winner()]) == 1
+        return len([None for player_state in self.player_states if not player_state.is_winner()]) <= 1
 
     def get_last_player_actions(self):
         round_ = self.game_history[self.game_start_time][self.round_index]
@@ -210,10 +213,11 @@ class GameState:
 
     def choose_first_player(self):
         lowest_cards = [self.get_lowest_card(player_state) for player_state in self.player_states]
-        return self.turn_index if not lowest_cards else lowest_cards.index(min(lowest_cards))
+        min_card = min(lowest_cards)
+        return self.turn_index if min_card == 15 else lowest_cards.index(min_card)
     
     def get_lowest_card(self, player_state: PlayerState):
-        return min([card_rank for card in player_state.cards_hand if (card_rank := get_card_rank(card)) not in self.magic_cards])
+        return min([card_rank for card in player_state.cards_hand if (card_rank := get_card_rank(card)) not in self.magic_cards], default=15)
 
     def get_playable_cards(self, player_index: int):
         player_state = self.player_states[player_index]
@@ -295,8 +299,12 @@ class GameState:
         return '*'
     
     def next_turn(self):
-        # Move to the next player's turn            
+        # Move to the next player's turn
         self.turn_index = (self.turn_index + 1) % len(self.player_states)
+        # print(f"Next turn:{self.turn_index}")
+        # print(f"Hand: {self.player_states[self.turn_index].cards_hand}")
+        # print(f"Face up: {self.player_states[self.turn_index].cards_face_up}")
+        # print(f"Face down: {self.player_states[self.turn_index].cards_face_down}")
         if self.player_states[self.turn_index].is_winner():
             if self.turn_index == self.start_index:
                 self.check_round_start()
@@ -321,21 +329,20 @@ magic_cards = {
 
 
 if __name__ == '__main__':
-    players = {'Ben1': [], 'Ben2': []}
+    players = {'Ben1': [], 'Ben2': [], 'Ben3': [], 'Ben4': []}
     game = GameState(players, magic_cards)
     game.start_game()
-    for i, player_state in enumerate(game.player_states):
-        print(i, player_state, end='\n\n')
-    print(f"Turn index: {game.turn_index}")
 
-    game.card_swap(game.player_states[game.turn_index].name, [game.player_states[game.turn_index].cards_hand[0], game.player_states[game.turn_index].cards_face_up[0]])
-    print("swap!")
-    print(f"{game.player_states[game.turn_index].name}, hand: {game.player_states[game.turn_index].cards_hand}, face_up: {game.player_states[game.turn_index].cards_face_up}")
+    # game.card_swap(game.player_states[game.turn_index].name, [game.player_states[game.turn_index].cards_hand[0], game.player_states[game.turn_index].cards_face_up[0]])
+    # print("swap!")
+    # print(f"{game.player_states[game.turn_index].name}, hand: {game.player_states[game.turn_index].cards_hand}, face_up: {game.player_states[game.turn_index].cards_face_up}")
     for _ in game.player_states:
         game.complete_turn()
     playable_cards = game.init_turn()
     print(f"playable cards: {playable_cards}")
     game.complete_turn([playable_cards[0]])
-    print(f"play stack: {game.table_cards.stack_play}")
-    index = len(game.player_states) - 1 if game.turn_index - 1 == -1 else game.turn_index - 1
-    print(f"{index}'s hand: {game.player_states[index].cards_hand}")
+    # print(f"play stack: {game.table_cards.stack_play}")
+    for i, round_ in enumerate(game.game_history[game.game_start_time]):
+        print(f"Round {i}:\n{round_}\n\n")
+    # index = len(game.player_states) - 1 if game.turn_index - 1 == -1 else game.turn_index - 1
+    # print(f"{index}'s hand: {game.player_states[index].cards_hand}")
