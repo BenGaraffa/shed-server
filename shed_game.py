@@ -1,7 +1,7 @@
 import random
 from datetime import datetime
 from enum import Enum
-
+from pathlib import Path
 
 def get_card_rank(card: str):
     # Extracts the numerical rank from a card string
@@ -41,10 +41,15 @@ class TableCards:
     def __init__(self):
         # Initialize a deck of cards, shuffle it, and prepare stacks
         self.deck = [f'{suit}{str(i).zfill(2)}' for i in range(2, 15) for suit in ['h', 'd', 'c', 's']]
-        random.shuffle(self.deck)
         self.stack_discard = []  # Discarded cards stack
         self.stack_play = []     # Cards currently in play
     
+    def deck_shuffle(self):
+        # Using datetime to generate a granular seed
+        seed = int(datetime.now().timestamp() * 1e6)
+        random.Random(seed).shuffle(self.deck)
+        return seed
+
     def get_json(self):
         # Return json of the table's current state
         return {
@@ -82,24 +87,22 @@ class GameState:
         self.game_history = {'magic_cards': magic_cards}
     
     def store_game_state(self):
-        self.game_history[self.game_start_time][self.round_index]['player_states'] = [player.get_json() for player in self.player_states]
-        self.game_history[self.game_start_time][self.round_index]['table_cards'] = self.table_cards.get_json()
+        self.game_history[self.game_start_time]['rounds'][self.round_index]['player_states'] = [player.get_json() for player in self.player_states]
+        self.game_history[self.game_start_time]['rounds'][self.round_index]['table_cards'] = self.table_cards.get_json()
             
     def start_game(self):
-        # if self.is_game_over(): 
-        #     self.reset()
-        self.deal_cards()
-        # self.start_index = self.choose_first_player()
-        # self.turn_index = self.start_index
         self.game_start_time = datetime.now().strftime("%Y-%m-%d | %H:%M:%S")
-        self.game_history[self.game_start_time] = []
+        seed = self.table_cards.deck_shuffle()
+        self.game_history[self.game_start_time] = {'seed': seed, 'rounds': []}
+
+        self.deal_cards()
         self.create_round()
         self.store_game_state()
         self.round_index += 1
         self.create_round()
 
     def create_round(self):
-        self.game_history[self.game_start_time].append({player_index: [] for player_index in range(len(self.player_states))})
+        self.game_history[self.game_start_time]['rounds'].append({player_index: [] for player_index in range(len(self.player_states))})
 
     def init_turn(self):
         # Choose the first player and set the start index
@@ -112,7 +115,6 @@ class GameState:
         if playable_cards:
             return playable_cards
         
-        # self.complete_turn(['#'])
         return ['#']
     
     def get_player_index(self, player_name: str):
@@ -121,7 +123,6 @@ class GameState:
 
     def card_swap(self, player_name, cards=[]):
         player_state = self.player_states[self.get_player_index(player_name)]
-        print(f"get player index: {self.get_player_index(player_name)} player name: {player_name}")
         if not cards[0] in player_state.cards_hand:
             raise ValueError(f"{cards[0]} not in {player_name}'s hand")
         if not cards[1] in player_state.cards_face_up:
@@ -129,16 +130,14 @@ class GameState:
 
         hand_index = player_state.cards_hand.index(cards[0])
         face_up_index = player_state.cards_face_up.index(cards[1])
-        print(f"Hand card: {cards[0]}")
-        print(f"Face up card: {cards[1]}")
         player_state.cards_hand[hand_index] = cards[1]
         player_state.cards_face_up[face_up_index] = cards[0]
 
     def append_player_actions(self, action):
-        self.game_history[self.game_start_time][self.round_index][self.turn_index].append(action)
+        self.game_history[self.game_start_time]['rounds'][self.round_index][self.turn_index].append(action)
     
     def get_player_last_action(self):
-        player_history = self.game_history[self.game_start_time][self.round_index][self.turn_index]
+        player_history = self.game_history[self.game_start_time]['rounds'][self.round_index][self.turn_index]
         return None if not player_history else player_history[-1]
 
     def check_round_start(self):
@@ -181,7 +180,7 @@ class GameState:
         return len([None for player_state in self.player_states if not player_state.is_winner()]) <= 1
 
     def get_last_player_actions(self):
-        round_ = self.game_history[self.game_start_time][self.round_index]
+        round_ = self.game_history[self.game_start_time]['rounds'][self.round_index]
         index = len(self.player_states) - 1 if self.turn_index - 1 == -1 else self.turn_index - 1
             
         if not round_[index]:
@@ -189,44 +188,28 @@ class GameState:
         return round_[self.turn_index] if self.get_player_last_action() == '*' else round_[index]
     
     def reset(self, new_players: dict):
-        
-        # Make round index correct
         # Rotate the player_states list to change the starting player
+        # Create a queue of new players
+        new_player_queue = [PlayerState(name) for name in new_players if name not in {player.name for player in self.player_states}]
+
+        # Replace players who have left with new players from the queue
+        for i, player_state in enumerate(self.player_states):
+            if player_state.name not in new_players:
+                self.player_states[i] = new_player_queue.pop(0) if new_player_queue else None
+
+        # Remove None values (if any players were not replaced)
+        self.player_states = [player for player in self.player_states if player is not None]
+
+        # Add any remaining new players to the end of the list
+        self.player_states.extend(new_player_queue)
+
         self.player_states.insert(0, self.player_states.pop())
-
-        # Create sets of old and new player names
-        old_player_names = set(player_state.name for player_state in self.player_states)
-        new_player_names = set(new_players.keys())
-
-        # Only proceed if there are changes in the player list
-        if old_player_names != new_player_names:
-            # List of new player names
-            new_player_list = list(new_players.keys())
-
-            # Replace players who have left with new players, or mark them for removal
-            new_player_index = 0
-            for i in range(len(self.player_states)):
-                if self.player_states[i].name not in new_players:
-                    if new_player_index < len(new_player_list):
-                        # Replace with a new player
-                        self.player_states[i] = PlayerState(new_player_list[new_player_index])
-                        new_player_index += 1
-                    else:
-                        # Mark for removal
-                        self.player_states[i] = None
-
-            # Remove None values
-            self.player_states = [player for player in self.player_states if player is not None]
-
-            # Add remaining new players to the end of the list
-            if new_player_index < len(new_player_list):
-                remaining_new_players = new_player_list[new_player_index:]
-                self.player_states.extend(PlayerState(name) for name in remaining_new_players)
 
         # Reset game-related variables
         self.table_cards = TableCards()  # Reset the table cards
-        self.is_game_over = False        # Reset game over flag
+        self.start_index = 0             # Reset the start index
         self.turn_index = 0              # Reset the turn index
+        self.round_index = 0             # Reset the turn index
 
     def choose_first_player(self):
         lowest_cards = [self.get_lowest_card(player_state) for player_state in self.player_states]
@@ -343,6 +326,15 @@ class GameState:
                 player_state.cards_face_up.append(self.table_cards.deck.pop())
                 player_state.cards_face_down.append(self.table_cards.deck.pop())
 
+    def output_history(self):
+        Path(".\game_history").mkdir(parents=True, exist_ok=True)
+        output_filename = f".\game_history\game_{self.game_history[self.game_start_time]['seed']}_history_output.txt"
+        with open(output_filename, "w+") as file:
+            file.write(f"Seed: {self.game_history[self.game_start_time]['seed']}\n\n")
+            for i, round_ in enumerate(self.game_history[self.game_start_time]['rounds']):
+                file.write(f"Round {i}:\n{round_}\n\n")
+
+        print(f"Game history written to {output_filename}")
 
 # Magic card rules
 magic_cards = {
@@ -352,22 +344,25 @@ magic_cards = {
     10: MagicCard(MagicAbilities.BURN, set(range(2, 15)), True)
 }
 
-
 if __name__ == '__main__':
     players = {'Ben1': [], 'Ben2': []}
     game = GameState(players, magic_cards)
     game.start_game()
 
     game.card_swap(game.player_states[game.turn_index].name, [game.player_states[game.turn_index].cards_hand[0], game.player_states[game.turn_index].cards_face_up[0]])
-    print("swap!")
+
+    while not game.is_game_over():
+        playable_cards = game.init_turn()
+        game.complete_turn([playable_cards[0]])
+    
+    game.output_history()
+
+    game.reset({'Ben1': [], 'Ben3': []})
+
+    game.start_game()
 
     while not game.is_game_over():
         playable_cards = game.init_turn()
         game.complete_turn([playable_cards[0]])
 
-    output_filename = f"game_history_output.txt"
-    with open(output_filename, "w+") as file:
-        for i, round_ in enumerate(game.game_history[game.game_start_time]):
-            file.write(f"Round {i}:\n{round_}\n\n")
-
-    print(f"Game history written to {output_filename}")
+    game.output_history()    
