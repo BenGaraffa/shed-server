@@ -2,6 +2,7 @@ import random
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
+import pickle
 
 def get_card_rank(card: str):
     # Extracts the numerical rank from a card string
@@ -44,9 +45,11 @@ class TableCards:
         self.stack_discard = []  # Discarded cards stack
         self.stack_play = []     # Cards currently in play
     
-    def deck_shuffle(self):
+    def deck_shuffle(self, seed = None):
         # Using datetime to generate a granular seed
-        seed = int(datetime.now().timestamp() * 1e6)
+        if not seed:
+            seed = int(datetime.now().timestamp() * 1e6)
+            
         random.Random(seed).shuffle(self.deck)
         return seed
 
@@ -85,15 +88,22 @@ class GameState:
         self.round_index = 0
         self.game_start_time = ''
         self.game_history = {'magic_cards': magic_cards}
+        self.same_cards_count = 0
+        self.last_cards = []
+        self.is_game_over = False
+        self.winning_order = []
     
     def store_game_state(self):
         self.game_history[self.game_start_time]['rounds'][self.round_index]['player_states'] = [player.get_json() for player in self.player_states]
         self.game_history[self.game_start_time]['rounds'][self.round_index]['table_cards'] = self.table_cards.get_json()
             
     def start_game(self):
-        self.game_start_time = datetime.now().strftime("%Y-%m-%d | %H:%M:%S")
+        self.game_start_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S-%f")
         seed = self.table_cards.deck_shuffle()
         self.game_history[self.game_start_time] = {'seed': seed, 'rounds': []}
+
+        with open('seeds.txt', 'w') as file:
+            file.write(str(seed))
 
         self.deal_cards()
         self.create_round()
@@ -109,7 +119,11 @@ class GameState:
         if self.turn_index == self.start_index and self.round_index == 1:
             self.start_index = self.choose_first_player()
             self.turn_index = self.start_index
+        self.check_round_start()
 
+        if self.player_states[self.turn_index].is_winner():
+            return [None]
+        
         # send playable cards
         playable_cards = self.get_playable_cards(self.turn_index)
         if playable_cards:
@@ -117,6 +131,38 @@ class GameState:
         
         return ['#']
     
+    def complete_turn(self, actions=[]):
+        # Round start/store logic
+        player_state = self.player_states[self.turn_index]
+        # Parse actions
+        for action in actions:
+            match action:
+                case None:
+                    pass
+                case '#':
+                    # Pickup
+                    player_state.cards_hand.extend(self.table_cards.stack_play)
+                    self.table_cards.stack_play.clear()
+                    self.append_player_actions(action)
+                case _:
+                    # Play card
+                    result = self.play_card(action)
+                    self.append_player_actions(action)
+                    if  result == '*' and self.get_player_last_action() != '*':
+                        self.append_player_actions('*')
+                        
+        if player_state.is_winner():
+            self.check_game_over()
+            
+        if self.is_game_over:
+            self.store_game_state()
+            # print(f"Winning players: {self.winning_order}")
+            return
+
+        # Load next player's turns
+        if actions[0] == None or self.get_player_last_action() != '*':
+            self.next_turn()
+
     def get_player_index(self, player_name: str):
         player_names = [player.name for player in self.player_states]
         return player_names.index(player_name)
@@ -145,39 +191,31 @@ class GameState:
             self.store_game_state()
             self.create_round()
             self.round_index += 1
-            
-    def complete_turn(self, actions=[]):
-        # Round start/store logic
-        if self.get_player_last_action() != '*':
-            self.check_round_start()
+            self.check_same_cards()
 
-        player_state = self.player_states[self.turn_index]
-        # Parse actions
-        for action in actions:
-            match action:
-                case '#':
-                    # Pickup
-                    player_state.cards_hand.extend(self.table_cards.stack_play)
-                    self.table_cards.stack_play.clear()
-                    self.append_player_actions(action)
-                case _:
-                    # Play card
-                    result = self.play_card(action)
-                    self.append_player_actions(action)
-                    if  result == '*' and self.get_player_last_action() != '*':
-                        self.append_player_actions('*')
-                        
-        if player_state.is_winner():
-            if self.is_game_over():
-                self.store_game_state()
-                return
+    def check_same_cards(self):
+        if self.table_cards.deck:
+            return
+        current_cards = set(card for player_state in self.player_states for card in player_state.cards_hand)
+        current_cards.update(set(self.table_cards.stack_play))
 
-        # Load next player's turns
-        if not actions or self.get_player_last_action() != '*':
-            self.next_turn()
+        if current_cards == self.last_cards:
+            self.same_cards_count += 1
+        else:
+            self.last_cards = current_cards
+            self.same_cards_count = 0
+        
+        if self.same_cards_count == 10:
+            # print(f"Game over, due to repetition")
+            self.is_game_over = True
 
-    def is_game_over(self):
-        return len([None for player_state in self.player_states if not player_state.is_winner()]) <= 1
+    def check_game_over(self):
+        for player_state in self.player_states:
+            if player_state.is_winner() and player_state.name not in self.winning_order:
+                self.winning_order.append(player_state.name)
+
+        if len([None for player_state in self.player_states if not player_state.is_winner()]) <= 1:
+            self.is_game_over = True
 
     def get_last_player_actions(self):
         round_ = self.game_history[self.game_start_time]['rounds'][self.round_index]
@@ -187,8 +225,20 @@ class GameState:
             raise ValueError(f"{self.player_states[index].name} has no previous turn")
         return round_[self.turn_index] if self.get_player_last_action() == '*' else round_[index]
     
-    def reset(self, new_players: dict):
+    def reset(self, new_players: dict = None):
+        # Reset game-related variables
+        self.table_cards = TableCards()  # Reset the table cards
+        self.start_index = 0             # Reset the start index
+        self.turn_index = 0              # Reset the turn index
+        self.round_index = 0             # Reset the round index
+        self.is_game_over = False        # Reset the game over state
+        self.winning_order = []          # Reset the winning order
+
         # Rotate the player_states list to change the starting player
+        if not new_players:
+            self.player_states.insert(0, self.player_states.pop())
+            return
+        
         # Create a queue of new players
         new_player_queue = [PlayerState(name) for name in new_players if name not in {player.name for player in self.player_states}]
 
@@ -204,12 +254,6 @@ class GameState:
         self.player_states.extend(new_player_queue)
 
         self.player_states.insert(0, self.player_states.pop())
-
-        # Reset game-related variables
-        self.table_cards = TableCards()  # Reset the table cards
-        self.start_index = 0             # Reset the start index
-        self.turn_index = 0              # Reset the turn index
-        self.round_index = 0             # Reset the turn index
 
     def choose_first_player(self):
         lowest_cards = [self.get_lowest_card(player_state) for player_state in self.player_states]
@@ -313,10 +357,6 @@ class GameState:
     def next_turn(self):
         # Move to the next player's turn
         self.turn_index = (self.turn_index + 1) % len(self.player_states)
-        if self.player_states[self.turn_index].is_winner():
-            if self.turn_index == self.start_index:
-                self.check_round_start()
-            self.next_turn()
 
     def deal_cards(self):
         # Deal initial cards to all players
@@ -328,13 +368,22 @@ class GameState:
 
     def output_history(self):
         Path(".\game_history").mkdir(parents=True, exist_ok=True)
-        output_filename = f".\game_history\game_{self.game_history[self.game_start_time]['seed']}_history_output.txt"
+        output_filename = f".\game_history\game_{self.game_start_time}_{self.game_history[self.game_start_time]['seed']}_history_output.txt"
         with open(output_filename, "w+") as file:
             file.write(f"Seed: {self.game_history[self.game_start_time]['seed']}\n\n")
             for i, round_ in enumerate(self.game_history[self.game_start_time]['rounds']):
                 file.write(f"Round {i}:\n{round_}\n\n")
 
         print(f"Game history written to {output_filename}")
+
+    def get_game_history_for_ai(self):
+        # Format the game history for AI processing
+        ai_game_data = {
+            'start_index': self.start_index,
+            'game_history': self.game_history[self.game_start_time],
+            'winning_order': self.winning_order
+        }
+        return ai_game_data
 
 # Magic card rules
 magic_cards = {
@@ -344,25 +393,76 @@ magic_cards = {
     10: MagicCard(MagicAbilities.BURN, set(range(2, 15)), True)
 }
 
-if __name__ == '__main__':
-    players = {'Ben1': [], 'Ben2': []}
-    game = GameState(players, magic_cards)
-    game.start_game()
+def simulate_and_collect_histories(num_games, num_players, magic_cards):
+    all_game_histories = []
+    i = 0
+    while i < num_games:
+        players = {f'Player{i}': [] for i in range(num_players)}
+        game = GameState(players, magic_cards)
+        game.start_game()
 
-    game.card_swap(game.player_states[game.turn_index].name, [game.player_states[game.turn_index].cards_hand[0], game.player_states[game.turn_index].cards_face_up[0]])
+        while not game.is_game_over:
+            playable_cards = game.init_turn()
+            game.complete_turn([playable_cards[0]])
+        
+        if len(game.winning_order) == num_players - 1:
+            game_history = game.get_game_history_for_ai()
+            all_game_histories.append(game_history)
+            print(f"Game {i} stored")
+            i += 1
 
-    while not game.is_game_over():
-        playable_cards = game.init_turn()
-        game.complete_turn([playable_cards[0]])
+    return all_game_histories
+
+def save_game_histories(game_histories, filename):
+    with open(filename, 'wb') as file:
+        pickle.dump(game_histories, file)
+
+# Save the game histories
+game_histories = simulate_and_collect_histories(100, 4, magic_cards)
+save_game_histories(game_histories, 'game_histories.pkl')
+
+# if __name__ == '__main__':
+#     players = {'Ben0': [], 'Ben1': [], 'Ben2': [], 'Ben3': []}
+#     game = GameState(players, magic_cards)
+#     game.start_game()
+
+#     game.card_swap(game.player_states[game.turn_index].name, [game.player_states[game.turn_index].cards_hand[0], game.player_states[game.turn_index].cards_face_up[0]])
+
+#     while not game.is_game_over:
+#         # play random  cards
+#         playable_cards = game.init_turn()
+#         game.complete_turn([playable_cards[0]])
     
-    game.output_history()
+#     game.output_history()
 
-    game.reset({'Ben1': [], 'Ben3': []})
+#     game.reset()
 
-    game.start_game()
+#     game.start_game()
 
-    while not game.is_game_over():
-        playable_cards = game.init_turn()
-        game.complete_turn([playable_cards[0]])
+#     while not game.is_game_over:
+#         # play highest card available
+#         playable_cards = game.init_turn()
+#         if playable_cards == ['#']:
+#             game.complete_turn(['#'])
+#             continue
+#         playable_card_ranks = [get_card_rank(card) for card in playable_cards]
+#         highest_card =  playable_cards[playable_card_ranks.index(max(playable_card_ranks))]
+#         game.complete_turn([highest_card])
 
-    game.output_history()    
+#     game.output_history()
+
+#     game.reset()
+
+#     game.start_game()
+
+#     while not game.is_game_over:
+#         # play highest card available
+#         playable_cards = game.init_turn()
+#         if playable_cards == ['#']:
+#             game.complete_turn(['#'])
+#             continue
+#         playable_card_ranks = [get_card_rank(card) for card in playable_cards]
+#         lowest_card =  playable_cards[playable_card_ranks.index(min(playable_card_ranks))]
+#         game.complete_turn([lowest_card])
+
+#     game.output_history()
