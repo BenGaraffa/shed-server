@@ -8,33 +8,6 @@ def get_card_rank(card: str):
     # Extracts the numerical rank from a card string
     return None if not card else int(card[1:]) 
 
-
-def simulate_and_collect_histories(num_games, num_players, magic_cards):
-    all_game_histories = []
-    i = 0
-    while i < num_games:
-        players = {f'Player{i}': [] for i in range(num_players)}
-        game = GameState(players, magic_cards)
-        game.start_game()
-
-        while not game.is_game_over:
-            playable_cards = game.init_turn()
-            game.complete_turn([playable_cards[0]])
-        
-        if len(game.winning_order) == num_players - 1:
-            game_history = game.get_game_history_for_ai()
-            all_game_histories.append(game_history)
-            print(f"Game {i} stored")
-            i += 1
-
-    return all_game_histories
-
-
-def save_game_histories(game_histories, filename):
-    with open(filename, 'wb') as file:
-        pickle.dump(game_histories, file)
-
-
 class PlayerState:
     # Represents a player in the game
     def __init__(self, name: str):
@@ -402,15 +375,6 @@ class GameState:
 
         print(f"Game history written to {output_filename}")
 
-    def get_game_history_for_ai(self):
-        # Format the game history for AI processing
-        ai_game_data = {
-            'start_index': self.start_index,
-            'game_history': self.game_history[self.game_start_time],
-            'winning_order': self.winning_order
-        }
-        return ai_game_data
-
 # Magic card rules
 magic_cards = {
     2: MagicCard(MagicAbilities.RESET, set(range(2, 15)), False),
@@ -419,52 +383,48 @@ magic_cards = {
     10: MagicCard(MagicAbilities.BURN, set(range(2, 15)), True)
 }
 
-# Save the game histories
-game_histories = simulate_and_collect_histories(100, 4, magic_cards)
-save_game_histories(game_histories, 'game_histories.pkl')
+if __name__ == '__main__':
+    players = {'Ben0': [], 'Ben1': [], 'Ben2': [], 'Ben3': []}
+    game = GameState(players, magic_cards)
+    game.start_game()
 
-# if __name__ == '__main__':
-#     players = {'Ben0': [], 'Ben1': [], 'Ben2': [], 'Ben3': []}
-#     game = GameState(players, magic_cards)
-#     game.start_game()
+    game.card_swap(game.player_states[game.turn_index].name, [game.player_states[game.turn_index].cards_hand[0], game.player_states[game.turn_index].cards_face_up[0]])
 
-#     game.card_swap(game.player_states[game.turn_index].name, [game.player_states[game.turn_index].cards_hand[0], game.player_states[game.turn_index].cards_face_up[0]])
-
-#     while not game.is_game_over:
-#         # play random  cards
-#         playable_cards = game.init_turn()
-#         game.complete_turn([playable_cards[0]])
+    while not game.is_game_over:
+        # play random  cards
+        playable_cards = game.init_turn()
+        game.complete_turn([playable_cards[0]])
     
-#     game.output_history()
+    game.output_history()
 
-#     game.reset()
+    # game.reset()
 
-#     game.start_game()
+    # game.start_game()
 
-#     while not game.is_game_over:
-#         # play highest card available
-#         playable_cards = game.init_turn()
-#         if playable_cards == ['#']:
-#             game.complete_turn(['#'])
-#             continue
-#         playable_card_ranks = [get_card_rank(card) for card in playable_cards]
-#         highest_card =  playable_cards[playable_card_ranks.index(max(playable_card_ranks))]
-#         game.complete_turn([highest_card])
+    # while not game.is_game_over:
+    #     # play highest card available
+    #     playable_cards = game.init_turn()
+    #     if playable_cards == ['#']:
+    #         game.complete_turn(['#'])
+    #         continue
+    #     playable_card_ranks = [get_card_rank(card) for card in playable_cards]
+    #     highest_card =  playable_cards[playable_card_ranks.index(max(playable_card_ranks))]
+    #     game.complete_turn([highest_card])
 
-#     game.output_history()
+    # game.output_history()
 
-#     game.reset()
+    # game.reset()
 
-#     game.start_game()
+    # game.start_game()
 
-#     while not game.is_game_over:
-#         # play highest card available
-#         playable_cards = game.init_turn()
-#         if playable_cards == ['#']:
-#             game.complete_turn(['#'])
-#             continue
-#         playable_card_ranks = [get_card_rank(card) for card in playable_cards]
-#         lowest_card =  playable_cards[playable_card_ranks.index(min(playable_card_ranks))]
-#         game.complete_turn([lowest_card])
+    # while not game.is_game_over:
+    #     # play highest card available
+    #     playable_cards = game.init_turn()
+    #     if playable_cards == ['#']:
+    #         game.complete_turn(['#'])
+    #         continue
+    #     playable_card_ranks = [get_card_rank(card) for card in playable_cards]
+    #     lowest_card =  playable_cards[playable_card_ranks.index(min(playable_card_ranks))]
+    #     game.complete_turn([lowest_card])
 
-#     game.output_history()
+    # game.output_history()
