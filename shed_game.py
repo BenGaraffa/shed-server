@@ -1,8 +1,10 @@
+import os
 import random
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
 import pickle
+from AI import AIAgent
 
 def get_card_rank(card: str):
     # Extracts the numerical rank from a card string
@@ -151,6 +153,7 @@ class GameState:
                         self.append_player_actions('*')
                         
         if player_state.is_winner():
+            print(f"Game over, due to winner")
             self.check_game_over()
             
         if self.is_game_over:
@@ -205,7 +208,6 @@ class GameState:
             self.same_cards_count = 0
         
         if self.same_cards_count == 10:
-            # print(f"Game over, due to repetition")
             self.is_game_over = True
 
     def check_game_over(self):
@@ -232,10 +234,11 @@ class GameState:
         self.round_index = 0             # Reset the round index
         self.is_game_over = False        # Reset the game over state
         self.winning_order = []          # Reset the winning order
+        self.player_states = [PlayerState(player_state.name) for player_state in self.player_states]
+        self.player_states.insert(0, self.player_states.pop())
 
         # Rotate the player_states list to change the starting player
         if not new_players:
-            self.player_states.insert(0, self.player_states.pop())
             return
         
         # Create a queue of new players
@@ -252,8 +255,6 @@ class GameState:
         # Add any remaining new players to the end of the list
         self.player_states.extend(new_player_queue)
 
-        self.player_states.insert(0, self.player_states.pop())
-
     def choose_first_player(self):
         lowest_cards = [self.get_lowest_card(player_state) for player_state in self.player_states]
         min_card = min(lowest_cards)
@@ -269,7 +270,13 @@ class GameState:
         elif player_state.cards_face_up:
             return [card for card in player_state.cards_face_up if self.can_play_card(card)]
         elif player_state.cards_face_down:
-            return [card for card in player_state.cards_face_down if self.can_play_card(card)]
+            card = random.choice(player_state.cards_face_down)
+            if self.can_play_card(card):
+                return [card]
+            else:
+                player_state.cards_face_down.remove(card)
+                player_state.cards_hand.append(card)
+                return ['#']
 
     def can_play_card(self, card: str):
         card_rank = get_card_rank(card)
@@ -383,19 +390,75 @@ magic_cards = {
     10: MagicCard(MagicAbilities.BURN, set(range(2, 15)), True)
 }
 
+def save_agent(agent, directory=".\\agents"):
+    Path(directory).mkdir(parents=True, exist_ok=True)
+    filepath = Path(directory) / f"agent_{agent.name}.data"
+    with open(filepath, 'wb') as f:
+        pickle.dump(agent, f)
+
+def get_agent(name):
+    Path(".\\agents").mkdir(parents=True, exist_ok=True)
+    filename = f".\\agents\\agent_{name}.data"
+    if not os.path.exists(filename):
+        ai_agent = AIAgent(name)
+        save_agent(ai_agent)
+        return ai_agent
+    else:
+        with open(filename, 'rb') as f:
+            return pickle.load(f)
+            
 if __name__ == '__main__':
-    players = {'Ben0': [], 'Ben1': [], 'Ben2': [], 'Ben3': []}
-    game = GameState(players, magic_cards)
-    game.start_game()
+    players = {'Player0': [], 'Player1': []}
+    game = GameState(players, {})
+    ai_agent0 = get_agent('Player0')  # Initialize the AI agent
+    ai_agent1 = get_agent('Player1')
 
-    game.card_swap(game.player_states[game.turn_index].name, [game.player_states[game.turn_index].cards_hand[0], game.player_states[game.turn_index].cards_face_up[0]])
+    for i in range(1000):
+        game.start_game()
 
-    while not game.is_game_over:
-        # play random  cards
-        playable_cards = game.init_turn()
-        game.complete_turn([playable_cards[0]])
+        while not game.is_game_over:
+            playable_cards = game.init_turn()
+            chosen_action = ai_agent0.decide_move(game.player_states, game.table_cards, playable_cards, game.same_cards_count)
+            game.complete_turn(chosen_action)
+
+            playable_cards = game.init_turn()
+            chosen_action = ai_agent1.decide_move(game.player_states, game.table_cards, playable_cards, game.same_cards_count)
+            game.complete_turn(chosen_action)
+
+        # player_names = list(players.keys())
+        # if player_names[0] in game.winning_order:
+        #     ai_agent0.learn_from_game_end(1)
+        #     ai_agent1.learn_from_game_end(-1)
+        # elif player_names[1] in game.winning_order:
+        #     ai_agent0.learn_from_game_end(-1)
+        #     ai_agent1.learn_from_game_end(1)
+        # else:
+        #     ai_agent0.learn_from_game_end(0)
+        #     ai_agent1.learn_from_game_end(0)
+        
+        save_agent(ai_agent0)
+        save_agent(ai_agent1)
+        # game.output_history()
+        print(f"Completed game: {i}")
+        print(f"Accurate actions ai_agent0: {ai_agent0.accurate_actions}/{ai_agent0.total_actions}")
+        print(f"Accurate actions ai_agent1: {ai_agent1.accurate_actions}/{ai_agent1.total_actions}")
+        ai_agent0.accurate_actions, ai_agent0.total_actions = 0, 0
+        ai_agent1.accurate_actions, ai_agent1.total_actions = 0, 0
+        game.reset()
+        game.game_history = {'magic_cards': magic_cards}
+
+    # players = {'Ben0': [], 'Ben1': [], 'Ben2': [], 'Ben3': []}
+    # game = GameState(players, magic_cards)
+    # game.start_game()
+
+    # game.card_swap(game.player_states[game.turn_index].name, [game.player_states[game.turn_index].cards_hand[0], game.player_states[game.turn_index].cards_face_up[0]])
+
+    # while not game.is_game_over:
+    #     # play random  cards
+    #     playable_cards = game.init_turn()
+    #     game.complete_turn([playable_cards[0]])
     
-    game.output_history()
+    # game.output_history()
 
     # game.reset()
 
