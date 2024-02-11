@@ -10,6 +10,34 @@ def get_card_rank(card: str):
     # Extracts the numerical rank from a card string
     return None if not card else int(card[1:]) 
 
+
+def can_play_card(card: str, top_card: str, magic_cards: dict):
+    card_rank = get_card_rank(card)
+
+    top_card_rank = get_card_rank(top_card) if top_card else None
+    
+    # Allow card if nothing on deck
+    if not top_card_rank:
+        return True
+
+    # Magic card rules (if the played card is a magic card)
+    if card_rank in magic_cards:
+        if top_card_rank not in magic_cards[card_rank].playable_on:
+            return False
+
+    # Check for LOWER_THAN magic ability on the effective top card
+    elif top_card_rank in magic_cards:
+        top_magic_card = magic_cards[top_card_rank]
+        if top_magic_card.magic_ability == MagicAbilities.LOWER_THAN and card_rank > top_card_rank:
+            return False
+
+    # Regular rule for non-magic cards or when there's no effective top card
+    elif top_card_rank and card_rank < top_card_rank:
+        return False
+
+    return True
+
+
 class PlayerState:
     # Represents a player in the game
     def __init__(self, name: str):
@@ -153,7 +181,6 @@ class GameState:
                         self.append_player_actions('*')
                         
         if player_state.is_winner():
-            print(f"Game over, due to winner")
             self.check_game_over()
             
         if self.is_game_over:
@@ -215,7 +242,8 @@ class GameState:
             if player_state.is_winner() and player_state.name not in self.winning_order:
                 self.winning_order.append(player_state.name)
 
-        if len([None for player_state in self.player_states if not player_state.is_winner()]) <= 1:
+        if len([player_state.name for player_state in self.player_states if not player_state.is_winner()]) <= 1:
+            print(f"Game over, due to winner")
             self.is_game_over = True
 
     def get_last_player_actions(self):
@@ -265,49 +293,24 @@ class GameState:
 
     def get_playable_cards(self, player_index: int):
         player_state = self.player_states[player_index]
+        effective_top_card = self.find_effective_top_card()
+        
+        # Filter cards for lowest if on first round
+        if self.round_index == 2 and self.start_index == self.turn_index:
+            return [card for card in player_state.cards_hand if get_card_rank(card) == self.get_lowest_card(self.player_states[self.turn_index])]
+        
         if player_state.cards_hand:
-            return [card for card in player_state.cards_hand if self.can_play_card(card)]
+            return [card for card in player_state.cards_hand if self.can_play_card(card, effective_top_card, self.magic_cards)]
         elif player_state.cards_face_up:
-            return [card for card in player_state.cards_face_up if self.can_play_card(card)]
+            return [card for card in player_state.cards_face_up if self.can_play_card(card, effective_top_card, self.magic_cards)]
         elif player_state.cards_face_down:
             card = random.choice(player_state.cards_face_down)
-            if self.can_play_card(card):
+            if self.can_play_card(card, effective_top_card, self.magic_cards):
                 return [card]
             else:
                 player_state.cards_face_down.remove(card)
                 player_state.cards_hand.append(card)
                 return ['#']
-
-    def can_play_card(self, card: str):
-        card_rank = get_card_rank(card)
-
-        effective_top_card = self.find_effective_top_card()
-        effective_top_card_rank = get_card_rank(effective_top_card) if effective_top_card else None
-        
-        # Filter cards for lowest if on first round
-        if self.round_index == 1 and self.start_index == self.turn_index:
-            return card_rank == self.get_lowest_card(self.player_states[self.turn_index])
-
-        # Allow card if nothing on deck
-        if not effective_top_card_rank:
-            return True
-
-        # Magic card rules (if the played card is a magic card)
-        if card_rank in self.magic_cards:
-            if effective_top_card_rank not in self.magic_cards[card_rank].playable_on:
-                return False
-
-        # Check for LOWER_THAN magic ability on the effective top card
-        elif effective_top_card_rank in self.magic_cards:
-            top_magic_card = self.magic_cards[effective_top_card_rank]
-            if top_magic_card.magic_ability == MagicAbilities.LOWER_THAN and card_rank > effective_top_card_rank:
-                return False
-
-        # Regular rule for non-magic cards or when there's no effective top card
-        elif effective_top_card_rank and card_rank < effective_top_card_rank:
-            return False
-
-        return True
 
     def find_effective_top_card(self):
         # Find the first card that is not an Invisible magic card
@@ -320,7 +323,8 @@ class GameState:
     def play_card(self, card: str):
         # Handles the action of a player playing a card
         # Includes validation, playing the card, and checking for special conditions
-        if not self.can_play_card(card):
+        effective_top_card = self.find_effective_top_card()
+        if not self.can_play_card(card, effective_top_card, self.magic_cards):
             raise ValueError(f"Can't play '{card}' on '{self.find_effective_top_card()}'")
         
         player_state = self.player_states[self.turn_index]
@@ -408,44 +412,16 @@ def get_agent(name):
             return pickle.load(f)
             
 if __name__ == '__main__':
-    players = {'Player0': [], 'Player1': []}
-    game = GameState(players, {})
-    ai_agent0 = get_agent('Player0')  # Initialize the AI agent
-    ai_agent1 = get_agent('Player1')
+    players = {'Ben0': [], 'Ben1': []}
+    game = GameState(players, magic_cards)
+    game.start_game()
 
-    for i in range(1000):
-        game.start_game()
-
-        while not game.is_game_over:
-            playable_cards = game.init_turn()
-            chosen_action = ai_agent0.decide_move(game.player_states, game.table_cards, playable_cards, game.same_cards_count)
-            game.complete_turn(chosen_action)
-
-            playable_cards = game.init_turn()
-            chosen_action = ai_agent1.decide_move(game.player_states, game.table_cards, playable_cards, game.same_cards_count)
-            game.complete_turn(chosen_action)
-
-        # player_names = list(players.keys())
-        # if player_names[0] in game.winning_order:
-        #     ai_agent0.learn_from_game_end(1)
-        #     ai_agent1.learn_from_game_end(-1)
-        # elif player_names[1] in game.winning_order:
-        #     ai_agent0.learn_from_game_end(-1)
-        #     ai_agent1.learn_from_game_end(1)
-        # else:
-        #     ai_agent0.learn_from_game_end(0)
-        #     ai_agent1.learn_from_game_end(0)
-        
-        save_agent(ai_agent0)
-        save_agent(ai_agent1)
-        # game.output_history()
-        print(f"Completed game: {i}")
-        print(f"Accurate actions ai_agent0: {ai_agent0.accurate_actions}/{ai_agent0.total_actions}")
-        print(f"Accurate actions ai_agent1: {ai_agent1.accurate_actions}/{ai_agent1.total_actions}")
-        ai_agent0.accurate_actions, ai_agent0.total_actions = 0, 0
-        ai_agent1.accurate_actions, ai_agent1.total_actions = 0, 0
-        game.reset()
-        game.game_history = {'magic_cards': magic_cards}
+    while not game.is_game_over:
+        # play random  cards
+        playable_cards = game.init_turn()
+        game.complete_turn([playable_cards[0]])
+    
+    game.output_history()
 
     # players = {'Ben0': [], 'Ben1': [], 'Ben2': [], 'Ben3': []}
     # game = GameState(players, magic_cards)
@@ -491,3 +467,44 @@ if __name__ == '__main__':
     #     game.complete_turn([lowest_card])
 
     # game.output_history()
+
+    # players = {'Player0': [], 'Player1': []}
+    # game = GameState(players, {})
+    # ai_agent0 = get_agent('Player0')  # Initialize the AI agent
+    # ai_agent1 = get_agent('Player1')
+    # i = 0
+    # # for i in range(1000):
+    # while True:
+    #     game.start_game()
+
+    #     while not game.is_game_over:
+    #         playable_cards = game.init_turn()
+    #         chosen_action = ai_agent0.decide_move(game.player_states, game.table_cards, playable_cards, game.same_cards_count)
+    #         game.complete_turn(chosen_action)
+
+    #         playable_cards = game.init_turn()
+    #         chosen_action = ai_agent1.decide_move(game.player_states, game.table_cards, playable_cards, game.same_cards_count)
+    #         game.complete_turn(chosen_action)
+
+    #     # player_names = list(players.keys())
+    #     # if player_names[0] in game.winning_order:
+    #     #     ai_agent0.learn_from_game_end(1)
+    #     #     ai_agent1.learn_from_game_end(-1)
+    #     # elif player_names[1] in game.winning_order:
+    #     #     ai_agent0.learn_from_game_end(-1)
+    #     #     ai_agent1.learn_from_game_end(1)
+    #     # else:
+    #     #     ai_agent0.learn_from_game_end(0)
+    #     #     ai_agent1.learn_from_game_end(0)
+        
+    #     save_agent(ai_agent0)
+    #     save_agent(ai_agent1)
+    #     # game.output_history()
+    #     print(f"Completed game: {i}")
+    #     print(f"Accurate actions ai_agent0: {ai_agent0.accurate_actions}/{ai_agent0.total_actions}")
+    #     print(f"Accurate actions ai_agent1: {ai_agent1.accurate_actions}/{ai_agent1.total_actions}")
+    #     ai_agent0.accurate_actions, ai_agent0.total_actions = 0, 0
+    #     ai_agent1.accurate_actions, ai_agent1.total_actions = 0, 0
+    #     game.reset()
+    #     game.game_history = {'magic_cards': magic_cards}
+    #     i += 1
