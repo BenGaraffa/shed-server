@@ -91,24 +91,25 @@ class ProbabilisticModel:
         elif location == 'opponent_face_down':
             self.opponent_face_down_count += no_cards
         
-    # def get_playable_probability(self, loc, top_card):
-    #     playable_card_probs = []
-    #     for card_index, card_prob in enumerate(self.card_probabilities[loc]):
-    #         card_str = index_to_card(card_index)
-    #         if can_play_card(card_str, top_card, magic_cards):
-    #             playable_card_probs.append(card_prob)
+    def get_playable_probability(self, loc, top_card):
+        playable_card_probs = {}
+        for card_index, card_prob in enumerate(self.card_probabilities[loc]):
+            card_str = index_to_card(card_index)
+            if card_prob != 0 and can_play_card(card_str, top_card, magic_cards):
+                playable_card_probs[card_str] = card_prob
 
-    #     # Calculate the probability of having at least one playable card
-    #     if not playable_card_probs:
-    #         return 0.0  # No playable cards
-    #     else:
-    #         # Calculate the probability of not having any playable cards
-    #         prob_no_playable_cards = 1.0
-    #         for prob in playable_card_probs:
-    #             prob_no_playable_cards *= (1 - prob)
+        # Calculate the probability of having at least one playable card
+        if not playable_card_probs:
+            return 0.0  # No playable cards
+        else:
+            # Calculate the probability of not having any playable cards
+            prob_no_playable_cards = 1.0
+            for _, prob in playable_card_probs.items():
+                prob_no_playable_cards *= (1 - prob)
             
-    #         # The probability of having at least one playable card is the complement of having none
-    #         return 1 - prob_no_playable_cards
+            # The probability of having at least one playable card is the complement of having none
+            return (1 - prob_no_playable_cards, playable_card_probs)
+
 
     def update_probabilities(self):
         # Update probabilities based on game progress and visible actions
@@ -168,7 +169,7 @@ class ProbabilisticModel:
         return self.card_probabilities[location][card_index]
 
 # Usage example:
-player_hand_str = ['h02', 'd03', 'c10']
+player_hand_str = ['h06', 'd03', 'c10']
 player_face_up_str = ['h05', 'd06', 'c07']
 opponent_face_up_str = ['h08', 'd09', 'c04']
 
@@ -176,17 +177,23 @@ prob_model = ProbabilisticModel()
 prob_model.initialize_game(player_hand_str, player_face_up_str, opponent_face_up_str)
 
 # Display the probabilities (for demonstration purposes)
-print("Probabilities after game setup:")
-for location in prob_model.card_probabilities:
-    print(f"{location}: {prob_model.card_probabilities[location]}")
+# print("Probabilities after game setup:")
+# for location in prob_model.card_probabilities:
+#     print(f"{location}: {prob_model.card_probabilities[location]}")
 
-print("player_face_down sum:", round(sum(prob_model.card_probabilities['player_face_down'])))
+# print("player_face_down sum:", round(sum(prob_model.card_probabilities['player_face_down'])))
 
-print("Unseen Cards:")
-print(prob_model.unseen_cards)
+# print("Unseen Cards:")
+# print(prob_model.unseen_cards)
 
-print("Aggregated Probabilities:")
-print(prob_model.aggregate_probabilities())
-# top_card_str = 'h03'  # Example top card
-# prob_opponent_can_play = prob_model.get_playable_probability('opponent_hand', top_card_str)
+# print("Aggregated Probabilities:")
+# print(prob_model.aggregate_probabilities())
+# top_card_str = 'h14'  # Example top card
+# print(prob_model.get_playable_probability('opponent_hand', 'h11'))
 # print(f"Probability that opponent can play on {top_card_str}: {prob_opponent_can_play:.2f}")
+
+# for card in player_hand_str:
+#     print(prob_model.get_playable_probability('opponent_hand', card))
+prob, playable_card_probs = prob_model.get_playable_probability('opponent_hand', 'h08')
+
+print(prob, len(playable_card_probs))
