@@ -42,7 +42,7 @@ class ProbabilisticModel:
             'play_stack': [0.0] * 52,
             'deck': [1.0] * 52  # Initially, all cards are assumed to be in the deck
         }
-        self.unseen_locs = ['deck', 'opponent_hand', 'player_face_down', 'opponent_face_down']
+        # self.unseen_locs = ['deck', 'opponent_hand', 'player_face_down', 'opponent_face_down']
         self.unseen_cards = [1.0] * 52
         self.deck_count = 52
         self.opponent_unseen_hand_count = 0
@@ -90,7 +90,7 @@ class ProbabilisticModel:
             self.player_face_down_count += no_cards
         elif location == 'opponent_face_down':
             self.opponent_face_down_count += no_cards
-        
+
     def get_playable_probability(self, loc, top_card):
         playable_card_probs = {}
         for card_index, card_prob in enumerate(self.card_probabilities[loc]):
@@ -120,16 +120,20 @@ class ProbabilisticModel:
             for i in range(52):
                 # Check if the card's location is unknown (not confirmed to be in any specific location)
                 if self.unseen_cards[i] == 1.0:
-                    for loc in self.unseen_locs:
-                        if loc == 'deck':
-                            unseen_prob = self.deck_count / total_unseen
-                        elif loc == 'opponent_hand':
-                            unseen_prob = self.opponent_unseen_hand_count / total_unseen
-                        elif loc == 'player_face_down':
-                            unseen_prob = self.player_face_down_count / total_unseen
-                        elif loc == 'opponent_face_down':
-                            unseen_prob = self.opponent_face_down_count / total_unseen
-                        self.card_probabilities[loc][i] = unseen_prob
+                    self.card_probabilities['deck'][i] = self.deck_count / total_unseen
+                    self.card_probabilities['opponent_hand'][i] = self.opponent_unseen_hand_count / total_unseen
+                    self.card_probabilities['player_face_down'][i] = self.opponent_unseen_hand_count / total_unseen
+                    self.card_probabilities['opponent_face_down'][i] = self.opponent_unseen_hand_count / total_unseen
+                    # for loc in self.unseen_locs:
+                    #     if loc == 'deck':
+                    #         unseen_prob = self.deck_count / total_unseen
+                    #     elif loc == 'opponent_hand':
+                    #         unseen_prob = self.opponent_unseen_hand_count / total_unseen
+                    #     elif loc == 'player_face_down':
+                    #         unseen_prob = self.player_face_down_count / total_unseen
+                    #     elif loc == 'opponent_face_down':
+                    #         unseen_prob = self.opponent_face_down_count / total_unseen
+                    #     self.card_probabilities[loc][i] = unseen_prob
 
     def aggregate_probabilities(self):
         """
@@ -177,9 +181,9 @@ prob_model = ProbabilisticModel()
 prob_model.initialize_game(player_hand_str, player_face_up_str, opponent_face_up_str)
 
 # Display the probabilities (for demonstration purposes)
-# print("Probabilities after game setup:")
-# for location in prob_model.card_probabilities:
-#     print(f"{location}: {prob_model.card_probabilities[location]}")
+print("Probabilities after game setup:")
+for location in prob_model.card_probabilities:
+    print(f"{location}: {prob_model.card_probabilities[location]}")
 
 # print("player_face_down sum:", round(sum(prob_model.card_probabilities['player_face_down'])))
 
@@ -194,6 +198,27 @@ prob_model.initialize_game(player_hand_str, player_face_up_str, opponent_face_up
 
 # for card in player_hand_str:
 #     print(prob_model.get_playable_probability('opponent_hand', card))
-prob, playable_card_probs = prob_model.get_playable_probability('opponent_hand', 'h08')
+# prob, playable_card_probs = prob_model.get_playable_probability('opponent_hand', 'h08')
 
-print(prob, len(playable_card_probs))
+# print(prob, len(playable_card_probs))
+
+# import unittest
+# class TestMethods(unittest.TestCase):
+    
+#     def test_node(self):
+#         game_state = GameState()
+#         max_depth = 5
+
+#         node = Node(game_state, max_depth)
+
+#         node.generate_legal_moves()
+#         expected_legal_moves = []
+#         self.assert_equal(node.legal_moves, expected_legal_moves)
+
+#         node.simulate_moves()
+#         expected_child_nodes = []
+#         self.assert_equal(node.child_nodes, expected_child_nodes)
+
+#         best_moves = node.get_best_moves()
+#         expected_best_moves = []
+#         self.assert_equal(node.best_moves, expected_best_moves)
