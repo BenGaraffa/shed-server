@@ -300,12 +300,12 @@ class GameState:
             return [card for card in player_state.cards_hand if get_card_rank(card) == self.get_lowest_card(self.player_states[self.turn_index])]
         
         if player_state.cards_hand:
-            return [card for card in player_state.cards_hand if self.can_play_card(card, effective_top_card, self.magic_cards)]
+            return [card for card in player_state.cards_hand if can_play_card(card, effective_top_card, self.magic_cards)]
         elif player_state.cards_face_up:
-            return [card for card in player_state.cards_face_up if self.can_play_card(card, effective_top_card, self.magic_cards)]
+            return [card for card in player_state.cards_face_up if can_play_card(card, effective_top_card, self.magic_cards)]
         elif player_state.cards_face_down:
             card = random.choice(player_state.cards_face_down)
-            if self.can_play_card(card, effective_top_card, self.magic_cards):
+            if can_play_card(card, effective_top_card, self.magic_cards):
                 return [card]
             else:
                 player_state.cards_face_down.remove(card)
@@ -324,7 +324,7 @@ class GameState:
         # Handles the action of a player playing a card
         # Includes validation, playing the card, and checking for special conditions
         effective_top_card = self.find_effective_top_card()
-        if not self.can_play_card(card, effective_top_card, self.magic_cards):
+        if not can_play_card(card, effective_top_card, self.magic_cards):
             raise ValueError(f"Can't play '{card}' on '{self.find_effective_top_card()}'")
         
         player_state = self.player_states[self.turn_index]
