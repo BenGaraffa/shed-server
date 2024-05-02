@@ -85,6 +85,9 @@ class ProbabilisticModel:
         if location not in ['player_hand', 'opponent_hand', 'player_face_down', 'opponent_face_down']:
             raise Exception(f"Can't deal unseen cards to {location}")
         
+        if self.deck_count - no_cards < 0:
+            raise Exception(f"Can't deal {no_cards}, only {self.deck_count} left in the deck")
+        
         self.deck_count -= no_cards
         if location == 'player_hand':
             self.player_unseen_hand_count += no_cards
@@ -168,6 +171,22 @@ class ProbabilisticModel:
     def get_card_probability(self, card_str, location):
         card_index = card_to_index(card_str)
         return self.card_probabilities[location][card_index]
+    
+    def __eq__(self, other):
+        if not isinstance(other, ProbabilisticModel):
+            # don't attempt to compare against unrelated types
+            return NotImplemented
+
+        return (
+            self.card_probabilities == other.card_probabilities and
+            self.unseen_cards == other.unseen_cards and
+            self.deck_count == other.deck_count and
+            self.player_unseen_hand_count == other.player_unseen_hand_count and
+            self.opponent_unseen_hand_count == other.opponent_unseen_hand_count and
+            self.player_face_down_count == other.player_face_down_count and
+            self.opponent_face_down_count == other.opponent_face_down_count and
+            self.top_card == other.top_card
+        )
 
 # Usage example:
 player_hand_str = ['h06', 'd03', 'c10']
